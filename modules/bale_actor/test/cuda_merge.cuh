@@ -1,0 +1,1 @@
+uint64_t cuda_merge (uint64_t *a, uint64_t *b, uint64_t size1, uint64_t size2);
