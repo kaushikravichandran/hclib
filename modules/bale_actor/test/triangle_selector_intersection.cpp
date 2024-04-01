@@ -46,13 +46,7 @@ extern "C" {
 }
 #include <std_options.h>
 #include "selector.h"
-#include <cuda.h>
-#include <cuda_runtime_api.h>
-#include "cuda_merge.cuh"
-#include <typeinfo>
-#include <chrono>
-using namespace std::chrono;
-
+//#include <taskflow/cuda/algorithm/merge.hpp>
 #define CHUNKSIZE 64
 
 #define THREADS shmem_n_pes()
@@ -65,51 +59,9 @@ typedef struct TrianglePkt {
 } TrianglePkt;
 
 enum MailBoxType {REQUEST};
-uint64_t intersect_scalar_count_gpu (const uint64_t *list1, uint64_t size1, const int64_t *list2, uint64_t size2){
-    uint64_t *input_1;
-    uint64_t *input_2;
-    cudaSetDevice(0);
 
-    double t1 = wall_seconds();
-    cudaMalloc((void**)&input_1, size1 * sizeof(uint64_t));
-    cudaMalloc((void**)&input_2, size2 * sizeof(uint64_t));
-    double t1 = wall_seconds() - t1;
-    T0_fprintf(stderr, "Malloc Time:  %8.3lf seconds\n", laptime);
-
-    // initializes the data
-    
-    double t1 = wall_seconds();
-    cudaMemcpy(input_1, list1, size1 * sizeof(uint64_t), cudaMemcpyHostToDevice);
-    cudaMemcpy(input_2, list2, size2 * sizeof(uint64_t), cudaMemcpyHostToDevice);
-    double t1 = wall_seconds() - t1;
-    T0_fprintf(stderr, "Memcpy Time:  %8.3lf seconds\n", laptime);
-
-    // merge
-    double t1 = wall_seconds();
-    auto ans = cuda_merge(input_1, input_2, size1, size2);
-    double t1 = wall_seconds() - t1;
-    T0_fprintf(stderr, "Kernel Time:  %8.3lf seconds\n", laptime);
-
-    // delete the buffer
-    // cudaFree(input_1);
-    // cudaFree(input_2);
-}
 
 uint64_t intersect_scalar_count(const uint64_t *list1, uint64_t size1, const int64_t *list2, uint64_t size2){
-    // printf("Sizes: %d %d\n", size1, size2);
-    // for(int i = 0; i < size1; i++)
-    // {
-    //     printf("%d ", list1[i]);
-    // }
-
-    // printf("\n");
-    // for(int i = 0; i < size2; i++)
-    // {
-    //     printf("%d ", list2[i]);
-    // }
-    
-    // printf("\n");
-
 	uint64_t counter = 0;
 	const uint64_t *end1 = list1+size1;
     const int64_t *end2 = list2+size2;
@@ -143,8 +95,7 @@ private:
         uint64_t list2_offset_start = mat_->loffset[pkg.vj];
         uint64_t list2_offset_end = mat_->loffset[pkg.vj + 1];
 
-        *cnt_ += intersect_scalar_count_gpu(pkg.list1, pkg.list1_size, &mat_->lnonzero[list2_offset_start], list2_offset_end - list2_offset_start);
-        //*cnt_ += intersect_scalar_count(pkg.list1, pkg.list1_size, &mat_->lnonzero[list2_offset_start], list2_offset_end - list2_offset_start);
+        *cnt_ += intersect_scalar_count(pkg.list1, pkg.list1_size, &mat_->lnonzero[list2_offset_start], list2_offset_end - list2_offset_start);
     }
 };
 
@@ -177,7 +128,7 @@ double triangle_selector(int64_t* count, int64_t* sr, sparsemat_t* L, sparsemat_
                         pe = L_j % THREADS;
                         pkg.vj = L_j / THREADS;
                         // T0_fprintf(stderr, "l_i=%ld, k=%ld, count=%ld\n", l_i, L_j,*count);
-
+                        
                         uint64_t list1_offset_start = L->loffset[l_i];
                         uint64_t list1_offset_end = L->loffset[l_i + 1];
                         uint64_t list1_size = list1_offset_end - list1_offset_start - 1; 
@@ -248,6 +199,7 @@ double triangle_selector(int64_t* count, int64_t* sr, sparsemat_t* L, sparsemat_
     minavgmaxD_t stat[1];
     t1 = wall_seconds() - t1;
     lgp_min_avg_max_d( stat, t1, THREADS );
+
     return t1;
 }
 
@@ -511,7 +463,6 @@ int main(int argc, char* argv[]) {
         lgp_barrier();
     });
 
-    //T0_fprintf(stderr, "cudaMemCpy time: %d\n", totalTime);
     return 0;
 }
 
