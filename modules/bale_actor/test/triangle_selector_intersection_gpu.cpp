@@ -73,23 +73,23 @@ uint64_t intersect_scalar_count_gpu (const uint64_t *list1, uint64_t size1, cons
     double t1 = wall_seconds();
     cudaMalloc((void**)&input_1, size1 * sizeof(uint64_t));
     cudaMalloc((void**)&input_2, size2 * sizeof(uint64_t));
-    double t1 = wall_seconds() - t1;
-    T0_fprintf(stderr, "Malloc Time:  %8.3lf seconds\n", laptime);
+    t1 = wall_seconds() - t1;
+    T0_fprintf(stderr, "Malloc Time:  %8.3lf seconds\n", t1);
 
     // initializes the data
     
-    double t1 = wall_seconds();
+    t1 = wall_seconds();
     cudaMemcpy(input_1, list1, size1 * sizeof(uint64_t), cudaMemcpyHostToDevice);
     cudaMemcpy(input_2, list2, size2 * sizeof(uint64_t), cudaMemcpyHostToDevice);
-    double t1 = wall_seconds() - t1;
-    T0_fprintf(stderr, "Memcpy Time:  %8.3lf seconds\n", laptime);
+    t1 = wall_seconds() - t1;
+    T0_fprintf(stderr, "Memcpy Time:  %8.3lf seconds\n", t1);
 
     // merge
-    double t1 = wall_seconds();
+    t1 = wall_seconds();
     auto ans = cuda_merge(input_1, input_2, size1, size2);
-    double t1 = wall_seconds() - t1;
-    T0_fprintf(stderr, "Kernel Time:  %8.3lf seconds\n", laptime);
-
+    t1 = wall_seconds() - t1;
+    T0_fprintf(stderr, "Kernel Time:  %8.3lf seconds\n", t1);
+    return ans;
     // delete the buffer
     // cudaFree(input_1);
     // cudaFree(input_2);
