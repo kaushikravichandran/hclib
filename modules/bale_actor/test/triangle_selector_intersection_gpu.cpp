@@ -39,6 +39,10 @@
  * \brief Demo application that counts triangles in a graph.
  */
 
+
+// sbatch
+// large graphs
+// 
 #include <math.h>
 #include <shmem.h>
 extern "C" {
@@ -50,10 +54,11 @@ extern "C" {
 #include <cuda_runtime_api.h>
 #include "cuda_merge.cuh"
 #include <typeinfo>
-#include <chrono>
-using namespace std::chrono;
+// #include <chrono>
+// using namespace std::chrono;
 
-#define CHUNKSIZE 64
+//--gres=gpu:1
+#define CHUNKSIZE 128
 
 #define THREADS shmem_n_pes()
 #define MYTHREAD shmem_my_pe()
@@ -64,35 +69,60 @@ typedef struct TrianglePkt {
     uint64_t vj;
 } TrianglePkt;
 
+typedef struct ReturnValueStruct {
+    double memCpyTime;
+    double mallocTime;
+    double mergeTime;
+    uint64_t count;
+    ReturnValueStruct (double amemCpyTime, double amallocTime, double amergeTime, uint64_t acount)
+    {
+        memCpyTime = amemCpyTime;
+        mallocTime = amallocTime;
+        mergeTime = amergeTime;
+        count = acount;
+    }
+} ReturnValueStruct;
+
 enum MailBoxType {REQUEST};
-uint64_t intersect_scalar_count_gpu (const uint64_t *list1, uint64_t size1, const int64_t *list2, uint64_t size2){
+ReturnValueStruct intersect_scalar_count_gpu (const uint64_t *list1, uint64_t size1, const int64_t *list2, uint64_t size2){
     uint64_t *input_1;
     uint64_t *input_2;
+    int64_t *output;
+    uint64_t size3 = (size1 < size2) ? size1 : size2;
     cudaSetDevice(0);
 
-    double t1 = wall_seconds();
+    // std::chrono::time_point<std::chrono::system_clock> start, end;
+    // start = std::chrono::system_clock::now();
+    double start, end;
+    start = wall_seconds();
     cudaMalloc((void**)&input_1, size1 * sizeof(uint64_t));
     cudaMalloc((void**)&input_2, size2 * sizeof(uint64_t));
-    t1 = wall_seconds() - t1;
-    T0_fprintf(stderr, "Malloc Time:  %8.3lf seconds\n", t1);
+    cudaMalloc((void**)&output, size3 * sizeof(uint64_t));
+    end = wall_seconds();
+    // end = std::chrono::system_clock::now();
+    // std::chrono::duration<double> elapsed_seconds = end - start;
+    double mallocTime = end - start;
+    // T0_fprintf(stderr, "Malloc Time:  %8.3lf seconds\n", t1);
 
     // initializes the data
-    
-    t1 = wall_seconds();
+
+    start = wall_seconds();
     cudaMemcpy(input_1, list1, size1 * sizeof(uint64_t), cudaMemcpyHostToDevice);
     cudaMemcpy(input_2, list2, size2 * sizeof(uint64_t), cudaMemcpyHostToDevice);
-    t1 = wall_seconds() - t1;
-    T0_fprintf(stderr, "Memcpy Time:  %8.3lf seconds\n", t1);
+    cudaMemset(output, -1, sizeof(int64_t) * size3);
+    end = wall_seconds();
+    double memCpyTime = end - start;
 
     // merge
-    t1 = wall_seconds();
-    auto ans = cuda_merge(input_1, input_2, size1, size2);
-    t1 = wall_seconds() - t1;
-    T0_fprintf(stderr, "Kernel Time:  %8.3lf seconds\n", t1);
-    return ans;
+    start = wall_seconds();
+    auto ans = cuda_merge(input_1, input_2, output, size1, size2, size3);
+    end = wall_seconds();
+    double mergeTime = end - start;
+    
     // delete the buffer
-    // cudaFree(input_1);
-    // cudaFree(input_2);
+    cudaFree(input_1);
+    cudaFree(input_2);
+    return ReturnValueStruct(memCpyTime, mallocTime, mergeTime, ans);
 }
 
 uint64_t intersect_scalar_count(const uint64_t *list1, uint64_t size1, const int64_t *list2, uint64_t size2){
@@ -107,7 +137,7 @@ uint64_t intersect_scalar_count(const uint64_t *list1, uint64_t size1, const int
     // {
     //     printf("%d ", list2[i]);
     // }
-    
+
     // printf("\n");
 
 	uint64_t counter = 0;
@@ -128,7 +158,7 @@ uint64_t intersect_scalar_count(const uint64_t *list1, uint64_t size1, const int
 
 class TriangleSelector: public hclib::Selector<1, TrianglePkt> {
 public:
-    TriangleSelector(int64_t* cnt, sparsemat_t* mat) : cnt_(cnt), mat_(mat) {
+    TriangleSelector(int64_t* cnt, double* memCpyTime, double* mallocTime, double* mergeTime, sparsemat_t* mat) : mergeTime_(mergeTime),  mallocTime_(mallocTime),  memCpyTime_(memCpyTime),  cnt_(cnt), mat_(mat) {
         mb[REQUEST].process = [this] (TrianglePkt pkt, int sender_rank) { 
             this->req_process(pkt, sender_rank);
         };
@@ -137,19 +167,26 @@ public:
 private:
     //shared variables
     int64_t* cnt_;
+    double* mallocTime_;
+    double* memCpyTime_;
+    double* mergeTime_;
     sparsemat_t* mat_;
 
     void req_process(TrianglePkt pkg, int sender_rank) {
         uint64_t list2_offset_start = mat_->loffset[pkg.vj];
         uint64_t list2_offset_end = mat_->loffset[pkg.vj + 1];
 
-        *cnt_ += intersect_scalar_count_gpu(pkg.list1, pkg.list1_size, &mat_->lnonzero[list2_offset_start], list2_offset_end - list2_offset_start);
+        ReturnValueStruct returnVal = intersect_scalar_count_gpu(pkg.list1, pkg.list1_size, &mat_->lnonzero[list2_offset_start], list2_offset_end - list2_offset_start);
+        *memCpyTime_ += returnVal.memCpyTime;
+        *mergeTime_ += returnVal.mergeTime;
+        *mallocTime_ += returnVal.mallocTime;
+        *cnt_ += returnVal.count;
         //*cnt_ += intersect_scalar_count(pkg.list1, pkg.list1_size, &mat_->lnonzero[list2_offset_start], list2_offset_end - list2_offset_start);
     }
 };
 
 
-double triangle_selector(int64_t* count, int64_t* sr, sparsemat_t* L, sparsemat_t* U, int64_t alg) {
+double triangle_selector(int64_t* count, double* memCpyTime, double* mallocTime, double* mergeTime, int64_t* sr, sparsemat_t* L, sparsemat_t* U, int64_t alg) {
     int64_t numpushed = 0;
 
     if (!L) {
@@ -160,7 +197,7 @@ double triangle_selector(int64_t* count, int64_t* sr, sparsemat_t* L, sparsemat_
     double t1 = wall_seconds();
   
     if (alg == 0) {
-        TriangleSelector* triSelector = new TriangleSelector(count, L);
+        TriangleSelector* triSelector = new TriangleSelector(count, memCpyTime, mallocTime, mergeTime, L);
 
             hclib::finish([=, &numpushed]() {
                 triSelector->start();
@@ -212,7 +249,7 @@ double triangle_selector(int64_t* count, int64_t* sr, sparsemat_t* L, sparsemat_
             assert(false);
         }
 
-        TriangleSelector* triSelector = new TriangleSelector(count, U);
+        TriangleSelector* triSelector = new TriangleSelector(count, memCpyTime, mallocTime, mergeTime, U);
 
         hclib::finish([=, &numpushed] () {
             triSelector->start();
@@ -340,6 +377,7 @@ int main(int argc, char* argv[]) {
         sparsemat_t *A, *L, *U;
         
         if (read_graph) {
+            T0_fprintf(stderr, "Reading graph %s\n", filename);
             A = read_matrix_mm_to_dist(filename);
             if (!A) assert(false);
             
@@ -359,6 +397,7 @@ int main(int argc, char* argv[]) {
             sort_nonzeros(L);
 
         } else if (gen_kron_graph) {
+            T0_fprintf(stderr, "Generating kron graph\n");
             // string should be <mode> # # ... #
             // we will break the string of numbers (#s) into two groups and create
             // two local kronecker graphs out of them.
@@ -411,6 +450,7 @@ int main(int argc, char* argv[]) {
     
             L = generate_kronecker_graph(kron_specs, half, &kron_specs[half], num_ints - half, kron_graph_mode);
         } else {
+            T0_fprintf(stderr, "Generating erdos graph\n");
             L = erdos_renyi_random_graph(numrows, erdos_renyi_prob, UNDIRECTED, NOLOOPS, 12345);
         }
 
@@ -430,6 +470,12 @@ int main(int argc, char* argv[]) {
         T0_fprintf(stderr, "Run triangle counting ...\n");
         int64_t tri_cnt;           // partial count of triangles on this thread
         int64_t total_tri_cnt;     // the total number of triangles on all threads
+        double memCpy_Time;           // partial memcpy time on this thread
+        double total_memCpy_Time;     // the total memcpy on all threads
+        double malloc_Time;           // partial malloc time on this thread
+        double total_malloc_Time;     // the total malloc time on all threads
+        double merge_Time;           // partial merge on this thread
+        double total_merge_Time;     // the total merge time on all threads
         int64_t sh_refs;         // number of shared reference or pushes
         int64_t total_sh_refs;
 
@@ -488,17 +534,27 @@ int main(int argc, char* argv[]) {
 
         tri_cnt = 0;
         total_tri_cnt = 0;
+        memCpy_Time = 0;
+        total_memCpy_Time = 0;
+        malloc_Time = 0;
+        total_malloc_Time = 0;
+        merge_Time = 0;
+        total_merge_Time = 0;
         sh_refs = 0;
         total_sh_refs = 0;
 
         // only running selector model
         T0_fprintf(stderr, "Running Selector: \n");
-        laptime = triangle_selector(&tri_cnt, &sh_refs, L, U, alg);
+        laptime = triangle_selector(&tri_cnt, &memCpy_Time, &malloc_Time, &merge_Time, &sh_refs, L, U, alg);
         lgp_barrier();
 
         total_tri_cnt = lgp_reduce_add_l(tri_cnt);
+        total_memCpy_Time = lgp_reduce_add_l(memCpy_Time);
+        total_malloc_Time = lgp_reduce_add_l(malloc_Time);
+        total_merge_Time = lgp_reduce_add_l(merge_Time);
         total_sh_refs = lgp_reduce_add_l(sh_refs);
         T0_fprintf(stderr, "  %8.3lf seconds: %16ld triangles\n", laptime, total_tri_cnt);
+        T0_fprintf(stderr, "  %8.3lf seconds memcpy, %8.3lf seconds malloc, %8.3lf  seconds merge\n", total_memCpy_Time, total_malloc_Time, total_merge_Time);
         //T0_fprintf(stderr, "%16ld shared refs\n", total_sh_refs);
         if ((correct_answer >= 0) && (total_tri_cnt != (int64_t)correct_answer)) {
             T0_fprintf(stderr, "ERROR: Wrong answer!\n");

@@ -21,8 +21,8 @@ all: $(TARGETS)
 
 tc_gpu:
 	nvcc -c cuda_merge.cu
-	$(CXX) -g -O3 -std=c++11 -DUSE_SHMEM=1 $(HCLIB_CFLAGS) $(HCLIB_LDFLAGS) -c triangle_selector_intersection_gpu.cpp $(HCLIB_LDLIBS) -lspmat -lconvey -lexstack -llibgetput -lm -lcudart -L/usr/local/cuda/lib -lcuda 
-	$(CXX) -g -O3 -std=c++11 -DUSE_SHMEM=1 $(HCLIB_CFLAGS) $(HCLIB_LDFLAGS) -o triangle_selector_intersection_gpu triangle_selector_intersection_gpu.o cuda_merge.o $(HCLIB_LDLIBS) -lspmat -lconvey -lexstack -llibgetput -lm -lcudart -L/usr/local/cuda/lib -lcuda
+	$(CXX) -g -O3 -std=c++11 -DUSE_SHMEM=1 $(HCLIB_CFLAGS) $(HCLIB_LDFLAGS) -c triangle_selector_intersection_gpu.cpp $(HCLIB_LDLIBS) -lspmat -lconvey -lexstack -llibgetput -lm -lcudart -L/usr/local/cuda/lib 
+	$(CXX) -g -O3 -std=c++11 -DUSE_SHMEM=1 $(HCLIB_CFLAGS) $(HCLIB_LDFLAGS) -o triangle_selector_intersection_gpu triangle_selector_intersection_gpu.o cuda_merge.o $(HCLIB_LDLIBS) -lspmat -lconvey -lexstack -llibgetput -lhclib_bale_actor -lm -lcudart -L/usr/local/cuda/lib
 
 %: %.cpp
 	$(CXX) -g -O3 -std=c++11 -DUSE_SHMEM=1 $(HCLIB_CFLAGS) $(HCLIB_LDFLAGS) -o $@ $^ $(HCLIB_LDLIBS) -lspmat -lconvey -lexstack -llibgetput -lhclib_bale_actor -lm
