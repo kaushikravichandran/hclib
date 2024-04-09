@@ -97,7 +97,7 @@ ReturnValueStruct intersect_scalar_count_gpu (const uint64_t *list1, uint64_t si
     start = wall_seconds();
     cudaMalloc((void**)&input_1, size1 * sizeof(uint64_t));
     cudaMalloc((void**)&input_2, size2 * sizeof(uint64_t));
-    cudaMalloc((void**)&output, size3 * sizeof(uint64_t));
+    cudaMalloc((void**)&output, size3 * sizeof(int64_t));
     end = wall_seconds();
     // end = std::chrono::system_clock::now();
     // std::chrono::duration<double> elapsed_seconds = end - start;

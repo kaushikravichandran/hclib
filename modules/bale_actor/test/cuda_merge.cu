@@ -69,33 +69,32 @@ __global__ void merge(uint64_t *a, int64_t *b, uint64_t size1, uint64_t size2, u
 //    }
 // }
 
-uint64_t cuda_merge (uint64_t *a, uint64_t *b, uint64_t size1, uint64_t size2)
+uint64_t cuda_merge (uint64_t *a, uint64_t *b, int64_t* output, uint64_t size1, uint64_t size2, uint64_t size3)
 {
     // if (size1 == 0 || size2 == 0)
     // {
     //     return 0;
     // }
-    uint64_t size3 = (size1 < size2) ? size1 : size2;
-    int64_t *output;// = (int64_t*)malloc(sizeof(int64_t) * size3);
+    // uint64_t size3 = (size1 < size2) ? size1 : size2;
+    // int64_t *output;// = (int64_t*)malloc(sizeof(int64_t) * size3);
     // gpuErrchk(cudaMalloc((void**)&output, size3 * sizeof(int64_t)));
     // gpuErrchk(cudaMemset(output, -1, sizeof(int64_t) * size3));
-
-    cudaMalloc((void**)&output, size3 * sizeof(uint64_t));
-    cudaMemset(output, -1, sizeof(int64_t) * size3);
 
     thrust::device_ptr<uint64_t> a_start(a);
     thrust::device_ptr<uint64_t> a_end(a + size1);
     thrust::device_ptr<uint64_t> b_start(b);
     thrust::device_ptr<uint64_t> b_end(b + size2);
     thrust::device_ptr<int64_t> output_start(output);
-    
+
     // printf("In cuda_merge (before): %d %d %d %d %d %d\n", size1, size2, size3, sizeof(a), sizeof(b), sizeof(output));
-    thrust::set_intersection(a_start, a_end, b_start, b_end, output_start, thrust::less<int>());
+    thrust::device_ptr<int64_t> output_end = thrust::set_intersection(a_start, a_end, b_start, b_end, output_start, thrust::less<int>());
+    //thrust::device_ptr<int64_t> output_end = thrust::set_intersection(thrust::host, a, a + size1, b, b + size2, output_start, thrust::less<int>());
     // cudaMemcpy(output_host, output, sizeof(int64_t) * size3, cudaMemcpyDeviceToHost);
     // printf("In cuda_merge (after): %d %d %d %d %d %d\n", size1, size2, size3, sizeof(a), sizeof(b), sizeof(output));
-    thrust::device_vector<int64_t> output_vec(output_start, output_start + size3);    
-    int count = thrust::count(output_vec.begin(), output_vec.end(), -1);
-    return size3 - count;
+    // thrust::device_vector<int64_t> output_vec(output_start, output_start + size3);    
+    // int count = thrust::count(output_vec.begin(), output_vec.end(), -1);
+    // return size3 - count;
+    return (output_end - output_start);
     // printf("In kernel func: %d %d\n", size1, size2);
     // merge<<<1, 8>>>(a, b, size1, size2, counter);
 }
